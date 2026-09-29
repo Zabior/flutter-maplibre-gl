@@ -1505,6 +1505,23 @@ class MapLibreMethodChannel extends MapLibrePlatform {
       return Future.error(e);
     }
   }
+
+  @override
+  Future<void> setStyleTransition({
+    required int duration,
+    required int delay,
+    required bool enablePlacementTransitions,
+  }) async {
+    try {
+      await _channel.invokeMethod('map#setStyleTransition', <String, dynamic>{
+        'duration': duration,
+        'delay': delay,
+        'enablePlacementTransitions': enablePlacementTransitions,
+      });
+    } on PlatformException catch (e) {
+      return Future.error(e);
+    }
+  }
 }
 
 /// Normalizes a style entry (a layer or a source, in MapLibre style-spec form)

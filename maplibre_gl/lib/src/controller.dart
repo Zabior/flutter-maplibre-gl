@@ -2437,6 +2437,29 @@ class MapLibreMapController extends ChangeNotifier {
     return _maplibrePlatform.setStyle(styleString);
   }
 
+  /// Sets the default transition options of the style.
+  ///
+  /// [duration] and [delay] are in milliseconds. Pass
+  /// `enablePlacementTransitions: false` to skip the fade in/out animation of
+  /// symbols whose placement changes; a continuously updated symbol source
+  /// (for example moving vehicles) then stops keeping the map busy for the
+  /// transition duration after every update.
+  ///
+  /// Implemented on Android and iOS; web accepts the call but keeps the
+  /// default fade duration because maplibre-gl-js only takes it when the map
+  /// is created.
+  Future<void> setStyleTransition({
+    int duration = 300,
+    int delay = 0,
+    bool enablePlacementTransitions = true,
+  }) {
+    return _maplibrePlatform.setStyleTransition(
+      duration: duration,
+      delay: delay,
+      enablePlacementTransitions: enablePlacementTransitions,
+    );
+  }
+
   @override
   void dispose() {
     _isDisposed = true;

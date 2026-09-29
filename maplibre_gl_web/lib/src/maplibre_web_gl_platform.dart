@@ -1464,6 +1464,20 @@ class MapLibreMapController extends MapLibrePlatform
     _map.setStyle(sanitizedStyle, {'diff': false});
   }
 
+  /// maplibre-gl-js takes the symbol fade duration only when the map is
+  /// created (`fadeDuration` in `MapOptions`); there is no public way to
+  /// change it on a running map. The default (300 ms) therefore stays in
+  /// effect.
+  @override
+  Future<void> setStyleTransition({
+    required int duration,
+    required int delay,
+    required bool enablePlacementTransitions,
+  }) async {
+    // TODO: implement setStyleTransition
+    throw UnimplementedError();
+  }
+
   /// Sanitizes the style object to ensure it is in the correct format.
   ///
   /// - JSON strings are parsed via native JSON.parse to avoid Dart metadata

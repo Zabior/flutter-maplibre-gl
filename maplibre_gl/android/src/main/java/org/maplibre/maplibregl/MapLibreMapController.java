@@ -81,6 +81,7 @@ import org.maplibre.android.style.light.Position;
 import org.maplibre.android.style.light.Light;
 import org.maplibre.android.style.layers.RasterLayer;
 import org.maplibre.android.style.layers.SymbolLayer;
+import org.maplibre.android.style.layers.TransitionOptions;
 import org.maplibre.android.style.sources.CustomGeometrySource;
 import org.maplibre.android.style.sources.GeoJsonOptions;
 import org.maplibre.android.style.sources.GeoJsonSource;
@@ -1397,8 +1398,31 @@ final class MapLibreMapController
     }
   }
 
+  private void setStyleTransition(
+      Number duration, Number delay, Boolean enablePlacementTransitions) {
+    if (style == null) {
+      Log.w(TAG, "setStyleTransition: style not ready, skipping");
+      return;
+    }
+    style.setTransition(
+        new TransitionOptions(
+            duration == null ? 300L : duration.longValue(),
+            delay == null ? 0L : delay.longValue(),
+            enablePlacementTransitions == null || enablePlacementTransitions));
+  }
+
   private void onMethodCallWithMap(MethodCall call, MethodChannel.Result result) {
     switch (call.method) {
+      case "map#setStyleTransition":
+        {
+          final Number duration = call.argument("duration");
+          final Number delay = call.argument("delay");
+          final Boolean enablePlacementTransitions =
+              call.argument("enablePlacementTransitions");
+          setStyleTransition(duration, delay, enablePlacementTransitions);
+          result.success(null);
+          break;
+        }
       case "map#updateMyLocationTrackingMode":
         {
           int myLocationTrackingMode = call.argument("mode");

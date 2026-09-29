@@ -517,6 +517,23 @@ abstract class MapLibrePlatform {
   /// 4. Passing the raw JSON of the map style.
   Future<void> setStyle(String styleString);
 
+  /// Sets the default transition options of the style.
+  ///
+  /// [duration] and [delay] are in milliseconds. Pass
+  /// [enablePlacementTransitions] as false to skip the fade in/out animation
+  /// of symbols whose placement changes, so a continuously updated symbol
+  /// source (for example moving vehicles) does not keep the map in its
+  /// transition state after every update.
+  ///
+  /// Implemented on Android and iOS. Web accepts the call but cannot change
+  /// the fade duration after the map has been created, so it keeps its
+  /// default there.
+  Future<void> setStyleTransition({
+    required int duration,
+    required int delay,
+    required bool enablePlacementTransitions,
+  });
+
   @mustCallSuper
   void dispose() {
     // clear all callbacks to avoid cyclic refs

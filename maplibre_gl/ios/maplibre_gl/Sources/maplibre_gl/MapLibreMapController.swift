@@ -470,6 +470,15 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
                 setMapLanguage(language: localIdentifier)
             }
             result(nil)
+        case "map#setStyleTransition":
+            guard let arguments = methodCall.arguments as? [String: Any] else { return }
+            setStyleTransition(
+                durationMs: arguments["duration"] as? Int ?? 300,
+                delayMs: arguments["delay"] as? Int ?? 0,
+                enablePlacementTransitions:
+                    arguments["enablePlacementTransitions"] as? Bool ?? true
+            )
+            result(nil)
         case "map#queryRenderedFeatures":
             guard let arguments = methodCall.arguments as? [String: Any] else {
                 result(FlutterError(
@@ -1714,6 +1723,19 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
 
     private func setMapLanguage(language: String) {
         self.mapView.setMapLanguage(language)
+    }
+
+    private func setStyleTransition(
+        durationMs: Int,
+        delayMs: Int,
+        enablePlacementTransitions: Bool
+    ) {
+        guard let style = mapView.style else { return }
+        style.transition = MLNTransitionMake(
+            TimeInterval(durationMs) / 1000,
+            TimeInterval(delayMs) / 1000
+        )
+        style.performsPlacementTransitions = enablePlacementTransitions
     }
 
     // The current map style parsed as a JSON dictionary (style-spec shaped),
