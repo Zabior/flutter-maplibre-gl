@@ -2445,9 +2445,8 @@ class MapLibreMapController extends ChangeNotifier {
   /// (for example moving vehicles) then stops keeping the map busy for the
   /// transition duration after every update.
   ///
-  /// Implemented on Android and iOS; web accepts the call but keeps the
-  /// default fade duration because maplibre-gl-js only takes it when the map
-  /// is created.
+  /// Implemented on Android and iOS; web is not supported because
+  /// maplibre-gl-js only takes the duration when the map is created.
   Future<void> setStyleTransition({
     int duration = 300,
     int delay = 0,
