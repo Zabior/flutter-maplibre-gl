@@ -646,4 +646,19 @@ class FakeMapLibrePlatform extends MapLibrePlatform {
   Future<void> setStyle(String styleString) async {
     calls.add(PlatformCall('setStyle', [styleString]));
   }
+
+  @override
+  Future<void> setStyleTransition({
+    required int duration,
+    required int delay,
+    required bool enablePlacementTransitions,
+  }) async {
+    calls.add(
+      PlatformCall('setStyleTransition', [], {
+        'duration': duration,
+        'delay': delay,
+        'enablePlacementTransitions': enablePlacementTransitions,
+      }),
+    );
+  }
 }

@@ -248,6 +248,10 @@ final class MapLibreMapController
 
   private Set<String> interactiveFeatureLayerIds;
   private Map<String, FeatureCollection> addedFeaturesByLayer;
+  /** Last GeoJSON pushed per source, parsed only if a feature is replaced. */
+  private Map<String, String> addedGeoJsonByLayer;
+  /** Ids of missing style images that no Flutter asset provides. */
+  private final Set<String> imagesWithoutAsset = new HashSet<>();
 
   private LatLngBounds bounds = null;
   Style.OnStyleLoaded onStyleLoadedCallback =
@@ -297,6 +301,7 @@ final class MapLibreMapController
     this.mapView = new MapView(context, options);
     this.interactiveFeatureLayerIds = new HashSet<>();
     this.addedFeaturesByLayer = new HashMap<String, FeatureCollection>();
+    this.addedGeoJsonByLayer = new HashMap<String, String>();
     this.density = context.getResources().getDisplayMetrics().density;
     this.lifecycleProvider = lifecycleProvider;
     if (dragEnabled) {
@@ -478,6 +483,7 @@ final class MapLibreMapController
     mapViewResumed = false;
     interactiveFeatureLayerIds.clear();
     addedFeaturesByLayer.clear();
+    addedGeoJsonByLayer.clear();
 
     mapViewContainer.removeAllViews();
     mapView = new MapView(mapContext, mapLibreMapOptions);
@@ -558,10 +564,15 @@ final class MapLibreMapController
 
     mapView.addOnStyleImageMissingListener(
         (id) -> {
+          if (imagesWithoutAsset.contains(id)) return;
+          final Style current = mapLibreMap.getStyle();
+          if (current != null && current.getImage(id) != null) return;
           DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
           final Bitmap bitmap = getScaledImage(id, displayMetrics.density);
           if (bitmap != null) {
             mapLibreMap.getStyle().addImage(id, bitmap);
+          } else {
+            imagesWithoutAsset.add(id);
           }
         });
 
@@ -916,20 +927,15 @@ final class MapLibreMapController
     }
 
     try {
-      FeatureCollection featureCollection = parseGeoJsonToFeatureCollection(geojson);
-      if (featureCollection == null) {
-        Log.w(TAG, "setGeoJsonSource: unsupported GeoJSON type, skipping update");
-        return;
-      }
-
       GeoJsonSource geoJsonSource = style.getSourceAs(sourceName);
       if (geoJsonSource == null) {
         Log.w(TAG, "setGeoJsonSource: source '" + sourceName + "' not found, skipping update");
         return;
       }
 
-      addedFeaturesByLayer.put(sourceName, featureCollection);
-      geoJsonSource.setGeoJson(featureCollection);
+      addedFeaturesByLayer.remove(sourceName);
+      addedGeoJsonByLayer.put(sourceName, geojson);
+      geoJsonSource.setGeoJson(geojson);
     } catch (Exception e) {
       Log.e(TAG, "setGeoJsonSource: error updating source '" + sourceName + "'", e);
     }
@@ -944,6 +950,15 @@ final class MapLibreMapController
     try {
       Feature feature = Feature.fromJson(geojsonFeature);
       FeatureCollection featureCollection = addedFeaturesByLayer.get(sourceName);
+      if (featureCollection == null) {
+        String raw = addedGeoJsonByLayer.get(sourceName);
+        if (raw != null) {
+          featureCollection = parseGeoJsonToFeatureCollection(raw);
+          if (featureCollection != null) {
+            addedFeaturesByLayer.put(sourceName, featureCollection);
+          }
+        }
+      }
       GeoJsonSource geoJsonSource = style.getSourceAs(sourceName);
 
       if (featureCollection != null && geoJsonSource != null) {

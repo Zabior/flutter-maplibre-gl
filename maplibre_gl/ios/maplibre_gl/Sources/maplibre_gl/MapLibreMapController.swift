@@ -30,6 +30,17 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
     private var interactiveFeatureLayerIds = Set<String>()
     private var addedShapesByLayer = [String: MLNShape]()
 
+    /// Parses the GeoJSON of `source#setGeoJson` off the main thread, which
+    /// Flutter shares with the UI isolate. Serial, so the updates of a source
+    /// are applied in call order.
+    private let geojsonParseQueue = DispatchQueue(
+        label: "org.maplibre.maplibregl.geojson-parse",
+        qos: .userInitiated
+    )
+
+    /// Names of missing style images that no Flutter asset provides.
+    private var imagesWithoutAsset = Set<String>()
+
     // GPS pulse: start/stop location updates on a timer to save battery.
     private var locationPulseTimer: Timer?
     private var locationPulseWindowTimer: Timer?
@@ -1380,11 +1391,11 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
             guard let arguments = methodCall.arguments as? [String: Any] else { return }
             guard let sourceId = arguments["sourceId"] as? String else { return }
             guard let geojson = arguments["geojson"] as? String else { return }
-            let setResult = setSource(sourceId: sourceId, geojson: geojson)
-
-            switch setResult {
-            case .success: result(nil)
-            case let .failure(error): result(error.flutterError)
+            setSource(sourceId: sourceId, geojson: geojson) { setResult in
+                switch setResult {
+                case .success: result(nil)
+                case let .failure(error): result(error.flutterError)
+                }
             }
 
         case "source#setFeature":
@@ -1970,8 +1981,17 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
     }
 
     // handle missing images
-    func mapView(_: MLNMapView, didFailToLoadImage name: String) -> UIImage? {
-        return loadIconImage(name: name)
+    func mapView(_ mapView: MLNMapView, didFailToLoadImage name: String) -> UIImage? {
+        // MapLibre can report an image as missing on every layout of a tile
+        // that uses it, including images added later through `style#addImage`
+        // (measured on Android at ~120 reports/s for the markers of an
+        // animated source). Assets do not change at runtime, so a name without
+        // one is remembered instead of being looked up again.
+        if imagesWithoutAsset.contains(name) { return nil }
+        if mapView.style?.image(forName: name) != nil { return nil }
+        let image = loadIconImage(name: name)
+        if image == nil { imagesWithoutAsset.insert(name) }
+        return image
     }
 
     func mapView(_: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
@@ -2533,26 +2553,53 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
         }
     }
 
-    func setSource(sourceId: String, geojson: String) -> Result<Void, MethodCallError> {
-        guard let style = mapView.style else {
-            return .failure(.styleNotFound)
+    /// Replaces the data of the shape source `sourceId` with `geojson`.
+    ///
+    /// Parsing builds an `MLNShape` object per feature, which for a source
+    /// updated at frame rate was a large share of the main thread, so it runs
+    /// on `geojsonParseQueue`. Only the hand-over to the source, which has to
+    /// happen on the main thread, stays there. `completion` is called on the
+    /// main thread.
+    func setSource(
+        sourceId: String,
+        geojson: String,
+        completion: @escaping (Result<Void, MethodCallError>) -> Void
+    ) {
+        guard mapView.style != nil else {
+            completion(.failure(.styleNotFound))
+            return
         }
 
-        do{
-            let parsed = try MLNShape(
-                data: geojson.data(using: .utf8)!,
-                encoding: String.Encoding.utf8.rawValue
-            )
-            guard let source = style.source(withIdentifier: sourceId) as? MLNShapeSource else {
-                return .failure(.sourceNotFound(sourceId: sourceId))
+        geojsonParseQueue.async { [weak self] in
+            let parsed: MLNShape
+            do {
+                parsed = try MLNShape(
+                    data: Data(geojson.utf8),
+                    encoding: String.Encoding.utf8.rawValue
+                )
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(.geojsonParseError(sourceId: sourceId)))
+                }
+                return
             }
-            addedShapesByLayer[sourceId] = parsed
-            source.shape = parsed
-            return .success(())
-        }catch{
-            return .failure(.geojsonParseError(sourceId: sourceId))
-        }
 
+            DispatchQueue.main.async {
+                // The style can have been replaced, or the map torn down,
+                // while the payload was parsed.
+                guard let self, let style = self.mapView.style else {
+                    completion(.failure(.styleNotFound))
+                    return
+                }
+                guard let source = style.source(withIdentifier: sourceId) as? MLNShapeSource else {
+                    completion(.failure(.sourceNotFound(sourceId: sourceId)))
+                    return
+                }
+                self.addedShapesByLayer[sourceId] = parsed
+                source.shape = parsed
+                completion(.success(()))
+            }
+        }
     }
 
 

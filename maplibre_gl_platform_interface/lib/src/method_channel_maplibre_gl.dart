@@ -848,7 +848,12 @@ class MapLibreMethodChannel extends MapLibrePlatform {
   /// large one (58 ms) instead of letting it take the synchronous path.
   ///
   /// Web never gets here: it hands the decoded map straight to maplibre-gl-js.
-  static const _geoJsonOffloadFeatureCount = 100;
+  ///
+  /// The feature threshold sits at 1000 because a collection of points is
+  /// cheap to encode (about 3.5 ms for 1000 on an emulator) while the isolate
+  /// hop costs a copy of the payload plus a round trip, which made every
+  /// 100-300 feature push of an animated layer slower, not smoother.
+  static const _geoJsonOffloadFeatureCount = 1000;
   static const _geoJsonOffloadPositionCount = 2000;
 
   /// Pending GeoJSON write per source id. See [_writeGeoJson].
