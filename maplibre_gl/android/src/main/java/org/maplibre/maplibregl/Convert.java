@@ -287,6 +287,10 @@ static LocationEngineRequest toLocationEngineRequest(Object o) {
     if (myLocationRenderMode != null) {
       sink.setMyLocationRenderMode(toInt(myLocationRenderMode));
     }
+    final Object myLocationIndicatorVisible = data.get("myLocationIndicatorVisible");
+    if (myLocationIndicatorVisible != null) {
+      sink.setMyLocationIndicatorVisible(toBoolean(myLocationIndicatorVisible));
+    }
     final Object logoEnabled = data.get("logoEnabled");
     if (logoEnabled != null) {
       sink.setLogoEnabled(toBoolean(logoEnabled));

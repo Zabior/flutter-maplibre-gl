@@ -22,6 +22,9 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
     private var initialTilt: CGFloat?
     private var trackCameraPosition = false
     private var myLocationEnabled = false
+    /// Whether the user location view draws anything; see
+    /// `setMyLocationIndicatorVisible`.
+    private var myLocationIndicatorVisible = true
     private var manualLocationSource = false
     private lazy var manualLocationManager = ManualLocationManager()
     private var scrollingEnabled = true
@@ -1994,6 +1997,13 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
         return image
     }
 
+    func mapView(_: MLNMapView, viewFor annotation: MLNAnnotation) -> MLNAnnotationView? {
+        // Nil keeps the SDK's own view: the blue dot, or the default view of
+        // any other annotation.
+        guard annotation is MLNUserLocation, !myLocationIndicatorVisible else { return nil }
+        return HiddenUserLocationAnnotationView()
+    }
+
     func mapView(_: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
         if let channel = channel, let userLocation = userLocation,
            let location = userLocation.location
@@ -2857,6 +2867,21 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
         updateMyLocationEnabled()
     }
 
+    func setMyLocationIndicatorVisible(myLocationIndicatorVisible: Bool) {
+        if self.myLocationIndicatorVisible == myLocationIndicatorVisible {
+            return
+        }
+        self.myLocationIndicatorVisible = myLocationIndicatorVisible
+        // The map asks its delegate for the user location view only when it
+        // starts showing the location, so a running one is restarted to pick
+        // up the change, keeping the camera tracking it had.
+        guard mapView.showsUserLocation else { return }
+        let trackingMode = mapView.userTrackingMode
+        mapView.showsUserLocation = false
+        mapView.showsUserLocation = true
+        mapView.userTrackingMode = trackingMode
+    }
+
     func setMyLocationTrackingMode(myLocationTrackingMode: MLNUserTrackingMode) {
         mapView.userTrackingMode = myLocationTrackingMode
     }
@@ -3016,4 +3041,12 @@ extension String {
         guard self.hasPrefix(prefix) else { return self }
         return String(self.dropFirst(prefix.count))
     }
+}
+
+/// User location view drawing nothing, used while the indicator is hidden.
+///
+/// The location keeps being tracked and reported to Dart (with the heading
+/// when the heading indicator is on); only the drawing is left to the app.
+private final class HiddenUserLocationAnnotationView: MLNUserLocationAnnotationView {
+    override func update() {}
 }

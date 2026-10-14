@@ -34,6 +34,7 @@ class MapLibreMap extends StatefulWidget {
     this.myLocationEnabled = false,
     this.myLocationTrackingMode = MyLocationTrackingMode.none,
     this.myLocationRenderMode = MyLocationRenderMode.normal,
+    this.myLocationIndicatorVisible = true,
     this.logoEnabled = false,
     this.logoViewPosition,
     this.logoViewMargins,
@@ -241,6 +242,19 @@ class MapLibreMap extends StatefulWidget {
   /// See the documentation of [MyLocationRenderMode] for details.
   /// If this is set to a value other than [MyLocationRenderMode.normal], [myLocationEnabled] needs to be true.
   final MyLocationRenderMode myLocationRenderMode;
+
+  /// Whether the map draws its user location indicator (the puck).
+  ///
+  /// When false, the location component keeps running: camera tracking,
+  /// [onUserLocationUpdated] and [MapLibreMapController.requestMyLocationLatLng]
+  /// work as before, but nothing is drawn, so an app can draw the location
+  /// itself, for instance as a style layer placed where it wants in the
+  /// layer order. While hidden, [onUserLocationUpdated] also reports the
+  /// compass heading on Android (iOS reports it either way, with
+  /// [MyLocationRenderMode.compass]).
+  ///
+  /// Only has an effect on Android and iOS. Defaults to true.
+  final bool myLocationIndicatorVisible;
 
   /// True if the MapLibre logo should be shown on the map.
   /// Defaults to false.
@@ -603,6 +617,7 @@ class MapLibreMapOptions {
     this.myLocationEnabled,
     this.myLocationTrackingMode,
     this.myLocationRenderMode,
+    this.myLocationIndicatorVisible,
     this.logoEnabled,
     this.logoViewPosition,
     this.logoViewMargins,
@@ -639,6 +654,7 @@ class MapLibreMapOptions {
         myLocationEnabled: map.myLocationEnabled,
         myLocationTrackingMode: map.myLocationTrackingMode,
         myLocationRenderMode: map.myLocationRenderMode,
+        myLocationIndicatorVisible: map.myLocationIndicatorVisible,
         logoEnabled: map.logoEnabled,
         logoViewPosition: map.logoViewPosition,
         logoViewMargins: map.logoViewMargins,
@@ -680,6 +696,8 @@ class MapLibreMapOptions {
   final MyLocationTrackingMode? myLocationTrackingMode;
 
   final MyLocationRenderMode? myLocationRenderMode;
+
+  final bool? myLocationIndicatorVisible;
 
   final bool? logoEnabled;
 
@@ -753,6 +771,7 @@ class MapLibreMapOptions {
     addIfNonNull('myLocationEnabled', myLocationEnabled);
     addIfNonNull('myLocationTrackingMode', myLocationTrackingMode?.index);
     addIfNonNull('myLocationRenderMode', myLocationRenderMode?.index);
+    addIfNonNull('myLocationIndicatorVisible', myLocationIndicatorVisible);
     addIfNonNull('logoEnabled', logoEnabled);
     addIfNonNull('logoViewPosition', logoViewPosition?.index);
     addIfNonNull('logoViewMargins', pointToArray(logoViewMargins));

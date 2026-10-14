@@ -23,6 +23,7 @@ class MapLibreMapBuilder implements MapLibreMapOptionsSink {
   private boolean featureTapsTriggersMapClick = false;
   private int myLocationTrackingMode = 0;
   private int myLocationRenderMode = 0;
+  private boolean myLocationIndicatorVisible = true;
   private String styleString = "";
   private LatLngBounds bounds = null;
   private LocationEngineRequest locationEngineRequest = null;
@@ -49,6 +50,7 @@ class MapLibreMapBuilder implements MapLibreMapOptionsSink {
             featureTapsTriggersMapClick
         );
     controller.init();
+    controller.setMyLocationIndicatorVisible(myLocationIndicatorVisible);
     controller.setMyLocationEnabled(myLocationEnabled);
     controller.setMyLocationTrackingMode(myLocationTrackingMode);
     controller.setMyLocationRenderMode(myLocationRenderMode);
@@ -142,6 +144,11 @@ class MapLibreMapBuilder implements MapLibreMapOptionsSink {
   @Override
   public void setMyLocationRenderMode(int myLocationRenderMode) {
     this.myLocationRenderMode = myLocationRenderMode;
+  }
+
+  @Override
+  public void setMyLocationIndicatorVisible(boolean myLocationIndicatorVisible) {
+    this.myLocationIndicatorVisible = myLocationIndicatorVisible;
   }
 
   @Override

@@ -78,5 +78,23 @@ void main() {
 
       expect(diff, isEmpty);
     });
+
+    test('sends a change of myLocationIndicatorVisible', () {
+      final diff = MapLibreMapOptions.fromWidget(
+        MapLibreMap(),
+      ).updatesMap(
+        MapLibreMapOptions.fromWidget(
+          MapLibreMap(myLocationIndicatorVisible: false),
+        ),
+      );
+
+      expect(diff, {'myLocationIndicatorVisible': false});
+    });
+  });
+
+  test('creates the map with the indicator visible by default', () {
+    final options = MapLibreMapOptions.fromWidget(MapLibreMap()).toMap();
+
+    expect(options['myLocationIndicatorVisible'], isTrue);
   });
 }

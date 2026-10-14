@@ -16,6 +16,7 @@ import android.graphics.PointF;
 import android.graphics.RectF;
 import android.location.Location;
 import android.os.Build;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.Pair;
@@ -49,6 +50,8 @@ import org.maplibre.android.geometry.LatLngQuad;
 import org.maplibre.android.geometry.VisibleRegion;
 import org.maplibre.android.gestures.AndroidGesturesManager;
 import org.maplibre.android.gestures.MoveGestureDetector;
+import org.maplibre.android.location.CompassEngine;
+import org.maplibre.android.location.CompassListener;
 import org.maplibre.android.location.LocationComponent;
 import org.maplibre.android.location.LocationComponentActivationOptions;
 import org.maplibre.android.location.LocationComponentOptions;
@@ -214,6 +217,22 @@ final class MapLibreMapController
   private boolean manualLocationSource = false;
   private int myLocationTrackingMode = 0;
   private int myLocationRenderMode = 0;
+  /**
+   * Whether the location component draws its indicator. Hidden, it keeps running with transparent
+   * images, and {@link #compassForwarder} reports the compass heading with the location updates so
+   * the app can draw the indicator itself.
+   */
+  private boolean myLocationIndicatorVisible = true;
+  /** Last location sent to Dart, sent again with every forwarded compass heading. */
+  private Location lastUserLocation = null;
+  private CompassEngine compassForwarderEngine = null;
+  private CompassListener compassForwarder = null;
+  private float lastForwardedHeading = Float.NaN;
+  private long lastForwardedHeadingTimeMs = 0;
+  /** Smallest heading change worth a platform message, in degrees. */
+  private static final float HEADING_FORWARD_MIN_CHANGE = 1f;
+  /** Shortest gap between two forwarded headings, in milliseconds. */
+  private static final long HEADING_FORWARD_MIN_INTERVAL_MS = 100;
   private LocationEngineFactory myLocationEngineFactory = new LocationEngineFactory();
   private boolean disposed = false;
   private boolean dragEnabled = true;
@@ -640,12 +659,19 @@ final class MapLibreMapController
       updateMyLocationTrackingMode();
       updateMyLocationRenderMode();
       locationComponent.addOnCameraTrackingChangedListener(this);
+      updateCompassForwarding();
     } else {
       Log.e(TAG, "missing location permissions");
     }
   }
 
   private void updateLocationComponentLayer() {
+    // A hidden indicator draws nothing, so where it sits among the layers
+    // does not matter; re-styling it after every added layer would only
+    // rebuild its layers.
+    if (!myLocationIndicatorVisible) {
+      return;
+    }
     if (locationComponent != null && locationComponentRequiresUpdate()) {
       locationComponent.applyStyle(buildLocationComponentOptions(style));
     }
@@ -687,14 +713,94 @@ final class MapLibreMapController
     if (lastLayerId != null) {
       optionsBuilder.layerAbove(lastLayerId);
     }
+    if (!myLocationIndicatorVisible) {
+      // Every image the indicator can show, in every render mode and stale
+      // state, is transparent; the accuracy circle and the shadow are off.
+      final int hidden = R.drawable.maplibre_gl_location_hidden;
+      optionsBuilder
+          .foregroundDrawable(hidden)
+          .foregroundDrawableStale(hidden)
+          .backgroundDrawable(hidden)
+          .backgroundDrawableStale(hidden)
+          .bearingDrawable(hidden)
+          .gpsDrawable(hidden)
+          .accuracyAlpha(0f)
+          .elevation(0f)
+          .pulseEnabled(false);
+    }
     return optionsBuilder.build();
+  }
+
+  /**
+   * Forwards the compass heading to Dart while the location is enabled and the indicator hidden:
+   * an app drawing the indicator itself has no other way to read it on Android.
+   */
+  private void updateCompassForwarding() {
+    final boolean wanted =
+        !myLocationIndicatorVisible
+            && myLocationEnabled
+            && locationComponent != null
+            && locationComponent.isLocationComponentActivated();
+    if (!wanted) {
+      stopForwardingCompass();
+      return;
+    }
+    if (compassForwarder != null) {
+      return;
+    }
+    final CompassEngine engine = locationComponent.getCompassEngine();
+    if (engine == null) {
+      return;
+    }
+    compassForwarder =
+        new CompassListener() {
+          @Override
+          public void onCompassChanged(float userHeading) {
+            forwardHeading(userHeading);
+          }
+
+          @Override
+          public void onCompassAccuracyChange(int compassStatus) {}
+        };
+    compassForwarderEngine = engine;
+    engine.addCompassListener(compassForwarder);
+  }
+
+  private void stopForwardingCompass() {
+    if (compassForwarder != null && compassForwarderEngine != null) {
+      compassForwarderEngine.removeCompassListener(compassForwarder);
+    }
+    compassForwarder = null;
+    compassForwarderEngine = null;
+    lastForwardedHeading = Float.NaN;
+  }
+
+  /** Sends the last location again with [heading], unless it barely changed. */
+  private void forwardHeading(float heading) {
+    final long now = SystemClock.elapsedRealtime();
+    if (!Float.isNaN(lastForwardedHeading)) {
+      final float change = Math.abs(((heading - lastForwardedHeading) % 360 + 540) % 360 - 180);
+      if (change < HEADING_FORWARD_MIN_CHANGE
+          || now - lastForwardedHeadingTimeMs < HEADING_FORWARD_MIN_INTERVAL_MS) {
+        return;
+      }
+    }
+    lastForwardedHeading = heading;
+    lastForwardedHeadingTimeMs = now;
+    if (lastUserLocation != null) {
+      sendUserLocation(lastUserLocation);
+    }
   }
 
   private void onUserLocationUpdate(Location location) {
     if (location == null) {
       return;
     }
+    lastUserLocation = location;
+    sendUserLocation(location);
+  }
 
+  private void sendUserLocation(@NonNull Location location) {
     final Map<String, Object> userLocation = new HashMap<>(6);
     userLocation.put("position", new double[] {location.getLatitude(), location.getLongitude()});
     userLocation.put("speed", location.getSpeed());
@@ -711,8 +817,16 @@ final class MapLibreMapController
     }
     userLocation.put("timestamp", location.getTime());
 
-    final Map<String, Object> arguments = new HashMap<>(1);
+    final Map<String, Object> arguments = new HashMap<>(2);
     arguments.put("userLocation", userLocation);
+    if (compassForwarder != null && !Float.isNaN(lastForwardedHeading)) {
+      // The SDK's compass reads the rotation vector sensor, which is
+      // referenced to magnetic north.
+      final Map<String, Object> heading = new HashMap<>(2);
+      heading.put("magneticHeading", (double) lastForwardedHeading);
+      heading.put("timestamp", System.currentTimeMillis());
+      arguments.put("heading", heading);
+    }
     methodChannel.invokeMethod("map#onUserLocationUpdated", arguments);
   }
 
@@ -3381,6 +3495,7 @@ final class MapLibreMapController
       locationComponent.setLocationComponentEnabled(false);
     }
     stopListeningForLocationUpdates();
+    stopForwardingCompass();
 
     // Persist MapView state so it can be restored when a new MapView is created
     // (e.g. across "Don't keep activities" or rotation).
@@ -3615,6 +3730,18 @@ final class MapLibreMapController
   }
 
   @Override
+  public void setMyLocationIndicatorVisible(boolean myLocationIndicatorVisible) {
+    if (this.myLocationIndicatorVisible == myLocationIndicatorVisible) {
+      return;
+    }
+    this.myLocationIndicatorVisible = myLocationIndicatorVisible;
+    if (locationComponent != null && style != null) {
+      locationComponent.applyStyle(buildLocationComponentOptions(style));
+    }
+    updateCompassForwarding();
+  }
+
+  @Override
   public void setMyLocationRenderMode(int myLocationRenderMode) {
     if (this.myLocationRenderMode == myLocationRenderMode) {
       return;
@@ -3775,6 +3902,7 @@ final class MapLibreMapController
     if (locationComponent != null) {
       locationComponent.setLocationComponentEnabled(myLocationEnabled);
     }
+    updateCompassForwarding();
   }
 
   private void startListeningForLocationUpdates() {
@@ -3796,6 +3924,28 @@ final class MapLibreMapController
           .getLocationEngine()
           .requestLocationUpdates(
               locationComponent.getLocationEngineRequest(), locationEngineCallback, null);
+      // Updates only come with new fixes, which a device standing still may
+      // not produce for a long time. The indicator starts from the last known
+      // location meanwhile, so Dart is told about it too, unless a fresh fix
+      // got there first.
+      try {
+        locationComponent
+            .getLocationEngine()
+            .getLastLocation(
+                new LocationEngineCallback<LocationEngineResult>() {
+                  @Override
+                  public void onSuccess(LocationEngineResult result) {
+                    if (lastUserLocation == null) {
+                      onUserLocationUpdate(result.getLastLocation());
+                    }
+                  }
+
+                  @Override
+                  public void onFailure(@NonNull Exception exception) {}
+                });
+      } catch (SecurityException e) {
+        Log.w(TAG, "startListeningForLocationUpdates: no last location", e);
+      }
     }
   }
 

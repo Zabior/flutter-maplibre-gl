@@ -65,6 +65,11 @@ class Convert {
         {
             delegate.setMyLocationRenderMode(myLocationRenderMode: renderMode)
         }
+        if let myLocationIndicatorVisible = options["myLocationIndicatorVisible"] as? Bool {
+            delegate.setMyLocationIndicatorVisible(
+                myLocationIndicatorVisible: myLocationIndicatorVisible
+            )
+        }
         if let logoEnabled = options["logoEnabled"] as? Bool {
             delegate.setLogoEnabled(logoEnabled: logoEnabled)
         }
